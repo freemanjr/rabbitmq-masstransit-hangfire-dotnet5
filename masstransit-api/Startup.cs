@@ -13,6 +13,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using MassTransit;
 using masstransit_api.EventConsumer;
+using Hangfire;
+using Hangfire.SqlServer;
+using EventContracts;
+using masstransit_api.Schedules;
 
 namespace masstransit_api
 {
@@ -28,15 +32,38 @@ namespace masstransit_api
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            // Add Hangfire services.
+            services.AddHangfire(configuration => configuration
+                .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UseSqlServerStorage(Configuration.GetConnectionString("HangfireConnection"), new SqlServerStorageOptions
+                {
+                    CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+                    SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+                    QueuePollInterval = TimeSpan.Zero,
+                    UseRecommendedIsolationLevel = true,
+                    DisableGlobalLocks = true
+                }));
+
+            // Add MassTransit services.
             services.AddMassTransit(x =>
             {
                 x.AddConsumer<ValueEnteredEventConsumer>();
+
                 x.UsingRabbitMq((context, cfg) =>
                 {
+                    cfg.UseHangfireScheduler(context);
+                    cfg.UseMessageScheduler(new Uri("queue:hangfire"));
                     cfg.ConfigureEndpoints(context);
+                    cfg.ReceiveEndpoint("eventconsumer", e =>
+                    {
+                        e.ConfigureConsumer<ValueEnteredEventConsumer>(context);
+                    });
                 });
             });
 
+            // Add the processing server as IHostedService
             services.AddMassTransitHostedService();
 
             services.AddControllers();
@@ -47,7 +74,7 @@ namespace masstransit_api
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IBus bus)
         {
             if (env.IsDevelopment())
             {
@@ -55,6 +82,8 @@ namespace masstransit_api
                 app.UseSwagger();
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "masstransit_api v1"));
             }
+
+            bus.ScheduleRecurringSend<IValueEntered>(new Uri("queue:ValueEnteredEvent"), new ScheduleEveryMinute(), new { Value = "Testing123" });
 
             app.UseHttpsRedirection();
 
@@ -65,6 +94,7 @@ namespace masstransit_api
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+                endpoints.MapHangfireDashboard();
             });
         }
     }
