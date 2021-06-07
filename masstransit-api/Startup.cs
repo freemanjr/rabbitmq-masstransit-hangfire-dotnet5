@@ -32,6 +32,8 @@ namespace masstransit_api
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            JobStorage.Current = new SqlServerStorage(Configuration.GetConnectionString("HangfireConnection"));
+
             // Add Hangfire services.
             services.AddHangfire(configuration => configuration
                 .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
@@ -49,17 +51,15 @@ namespace masstransit_api
             // Add MassTransit services.
             services.AddMassTransit(x =>
             {
+                x.AddMessageScheduler(new Uri("queue:scheduler"));
+
                 x.AddConsumer<ValueEnteredEventConsumer>();
 
                 x.UsingRabbitMq((context, cfg) =>
                 {
-                    cfg.UseHangfireScheduler(context);
-                    cfg.UseMessageScheduler(new Uri("queue:hangfire"));
+                    cfg.UseHangfireScheduler("scheduler");
+                    cfg.UseMessageScheduler(new Uri("queue:scheduler"));
                     cfg.ConfigureEndpoints(context);
-                    cfg.ReceiveEndpoint("eventconsumer", e =>
-                    {
-                        e.ConfigureConsumer<ValueEnteredEventConsumer>(context);
-                    });
                 });
             });
 

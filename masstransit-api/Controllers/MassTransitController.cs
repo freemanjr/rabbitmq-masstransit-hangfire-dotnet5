@@ -1,11 +1,12 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MassTransit;
 using EventContracts;
+using System.ComponentModel;
+using Hangfire;
 
 namespace masstransit_api.Controllers
 {
@@ -13,17 +14,17 @@ namespace masstransit_api.Controllers
     [ApiController]
     public class MassTransitController : ControllerBase
     {
-        private readonly IPublishEndpoint _publishEndpoint;
+        private readonly IMessageScheduler _messageScheduler;
 
-        public MassTransitController(IPublishEndpoint publishEndpoint)
+        public MassTransitController(IMessageScheduler messageScheduler)
         {
-            _publishEndpoint = publishEndpoint;
+            _messageScheduler = messageScheduler;
         }
 
         [HttpPost]
         public async Task<ActionResult> Post(string value)
         {
-            await _publishEndpoint.Publish<IValueEntered>(new
+            await _messageScheduler.SchedulePublish<IValueEntered>(DateTime.UtcNow, new
             {
                 Value = value
             });
