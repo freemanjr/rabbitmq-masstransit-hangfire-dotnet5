@@ -17,6 +17,7 @@ using Hangfire;
 using Hangfire.SqlServer;
 using EventContracts;
 using masstransit_api.Schedules;
+using masstransit_api.Extensions;
 
 namespace masstransit_api
 {
@@ -32,39 +33,7 @@ namespace masstransit_api
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            JobStorage.Current = new SqlServerStorage(Configuration.GetConnectionString("HangfireConnection"));
-
-            // Add Hangfire services.
-            services.AddHangfire(configuration => configuration
-                .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
-                .UseSimpleAssemblyNameTypeSerializer()
-                .UseRecommendedSerializerSettings()
-                .UseSqlServerStorage(Configuration.GetConnectionString("HangfireConnection"), new SqlServerStorageOptions
-                {
-                    CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-                    SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-                    QueuePollInterval = TimeSpan.Zero,
-                    UseRecommendedIsolationLevel = true,
-                    DisableGlobalLocks = true
-                }));
-
-            // Add MassTransit services.
-            services.AddMassTransit(x =>
-            {
-                x.AddMessageScheduler(new Uri("queue:scheduler"));
-
-                x.AddConsumer<ValueEnteredEventConsumer>();
-
-                x.UsingRabbitMq((context, cfg) =>
-                {
-                    cfg.UseHangfireScheduler("scheduler");
-                    cfg.UseMessageScheduler(new Uri("queue:scheduler"));
-                    cfg.ConfigureEndpoints(context);
-                });
-            });
-
-            // Add the processing server as IHostedService
-            services.AddMassTransitHostedService();
+            services.AddApplicationServices(Configuration);
 
             services.AddControllers();
             services.AddSwaggerGen(c =>
